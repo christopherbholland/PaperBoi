@@ -436,6 +436,40 @@ class PaperProcessor:
         
         return metadata
     
+    def _extract_and_sanitize_title(self, summary: str) -> str:
+        """
+        Extract the paper title from [[ ]] in summary and sanitize it for use as filename.
+        
+        Args:
+            summary (str): The summary text containing [[paper title]]
+            
+        Returns:
+            str: Sanitized title suitable for use as filename
+        """
+        try:
+            # Extract text between [[ and ]]
+            import re
+            match = re.search(r'\[\[(.*?)\]\]', summary)
+            if not match:
+                logging.warning("Could not find paper title in [[ ]] format")
+                return "untitled_paper"
+                
+            title = match.group(1).strip()
+            
+            # Sanitize for filename
+            # Replace invalid filename characters with underscores
+            title = re.sub(r'[<>:"/\\|?*]', '_', title)
+            # Replace multiple spaces/underscores with single underscore
+            title = re.sub(r'[\s_]+', '_', title)
+            # Remove any leading/trailing underscores
+            title = title.strip('_')
+            
+            return title
+            
+        except Exception as e:
+            logging.error(f"Error extracting title from summary: {str(e)}")
+            return "untitled_paper"
+    
 
     def list_processed_papers(self) -> list[dict]:
         """
@@ -501,25 +535,28 @@ class PaperProcessor:
                 if not self.openai.send_chunk(chunk, i, len(chunks)):
                     raise RuntimeError(f"Failed to process chunk {i}")
                     
-            # Generate summary using Assistant
             summary = self.openai.request_summary()
             if not summary:
                 raise RuntimeError("Failed to generate summary")
                 
-            # Save summary to file
-            summary_filename = f"summary_{pdf_path.stem}.txt"
+            # Extract title from summary and create filename
+            paper_title = self._extract_and_sanitize_title(summary)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            summary_filename = f"{paper_title}_{timestamp}.txt"
             summary_path = self.directories['summaries'] / summary_filename
+            
+            # Save summary to file
             if not self.openai.save_summary(summary, summary_path):
                 raise RuntimeError("Failed to save summary")
             
-            # Create and save metadata
-            metadata = self._create_metadata(url, pdf_path, len(chunks), title, doi)
+            # Create and save metadata (update to use extracted title)
+            metadata = self._create_metadata(url, pdf_path, len(chunks), paper_title, doi)
             metadata['summary_path'] = str(summary_path)
             metadata_path = self._save_metadata(metadata)
             
-            logging.info("Successfully completed paper processing")
+            logging.info(f"Successfully completed paper processing. Summary saved as: {summary_filename}")
             return metadata
-            
+        
         except Exception as e:
             logging.error(f"Error processing paper from URL {url}: {str(e)}")
             raise
