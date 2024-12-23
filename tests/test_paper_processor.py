@@ -7,10 +7,21 @@ from paper_processor import PaperProcessor
 
 class TestPaperProcessorExtended(unittest.TestCase):
     def setUp(self):
+        """
+        SetUp: Initialize the PaperProcessor instance for tests.
+        """
         self.processor = PaperProcessor()
 
     @patch('requests.head')
     def test_validate_url_success(self, mock_head):
+        """
+        Test: Validate that the URL points to a valid PDF.
+        Expected Results: 
+        - Validation succeeds (is_valid is True).
+        - No error message is returned.
+        Additional Details:
+        - Mocked response mimics a valid PDF URL with the correct content-type header.
+        """
         mock_head.return_value = MagicMock(
             status_code=200,
             headers={'content-type': 'application/pdf'},
@@ -23,6 +34,14 @@ class TestPaperProcessorExtended(unittest.TestCase):
     @patch('requests.get')
     @patch('builtins.open', new_callable=mock_open)
     def test_download_pdf_success(self, mock_file, mock_get):
+        """
+        Test: Download a PDF from a valid URL.
+        Expected Results:
+        - File is downloaded and written to the appropriate location.
+        - File ends with a .pdf extension.
+        Additional Details:
+        - Mocked response mimics successful PDF download with streaming content.
+        """
         mock_response = MagicMock()
         mock_response.iter_content.return_value = [b'PDF content']
         mock_response.raise_for_status = MagicMock()
@@ -38,6 +57,13 @@ class TestPaperProcessorExtended(unittest.TestCase):
 
     @patch('pdfplumber.open')
     def test_extract_text_from_pdf_success(self, mock_pdfplumber):
+        """
+        Test: Extract text content from a valid PDF.
+        Expected Results:
+        - Combined text from all pages is returned.
+        Additional Details:
+        - Mocked PDF contains two pages with predefined text for testing extraction.
+        """
         mock_pdf = MagicMock()
         mock_pdf.pages = [
             MagicMock(extract_text=lambda: "This is a longer text for Page 1."),
@@ -50,6 +76,13 @@ class TestPaperProcessorExtended(unittest.TestCase):
         self.assertEqual(result, "This is a longer text for Page 1.\nThis is a longer text for Page 2.")
 
     def test_create_chunks(self):
+        """
+        Test: Split text into manageable chunks without splitting sentences.
+        Expected Results:
+        - Text is split into chunks, preserving sentence boundaries.
+        Additional Details:
+        - Max chunk size is set to 25 characters for testing purposes.
+        """
         text = "This is sentence one. This is sentence two. This is sentence three."
         chunks = self.processor._create_chunks(text, max_chars=25)
         expected_chunks = ["This is sentence one.", "This is sentence two.", "This is sentence three."]
@@ -57,6 +90,13 @@ class TestPaperProcessorExtended(unittest.TestCase):
 
     @patch('builtins.open', new_callable=mock_open)
     def test_save_to_master_file(self, mock_file):
+        """
+        Test: Save metadata to the master JSON file.
+        Expected Results:
+        - JSON content matches the provided data.
+        Additional Details:
+        - Mocked file writing ensures JSON output is formatted correctly.
+        """
         data = {"key": "value"}
         self.processor._save_to_master_file(data)
 
@@ -71,11 +111,25 @@ class TestPaperProcessorExtended(unittest.TestCase):
 
     @patch('builtins.open', new_callable=mock_open, read_data='{}')
     def test_load_master_file(self, mock_file):
+        """
+        Test: Load the master JSON file.
+        Expected Results:
+        - Empty dictionary is returned when the file contains no data.
+        Additional Details:
+        - Mocked file contains an empty JSON object for testing.
+        """
         result = self.processor._load_master_file()
         self.assertEqual(result, {})
         mock_file.assert_called_once_with(self.processor.master_file, 'r', encoding='utf-8')
 
     def test_create_metadata(self):
+        """
+        Test: Create metadata for a processed paper.
+        Expected Results:
+        - Metadata dictionary contains all required fields with correct values.
+        Additional Details:
+        - Includes metadata for title, DOI, and chunk count.
+        """
         url = "https://example.com/sample.pdf"
         pdf_path = Path("dummy.pdf")
         num_chunks = 3
