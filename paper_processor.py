@@ -5,10 +5,9 @@ import logging
 from datetime import datetime
 import requests
 from urllib.parse import urlparse
-import re
 from typing import Tuple, Optional
 import pdfplumber
-import nltk
+import json
 
 class PaperProcessor:
     def __init__(self):
@@ -199,12 +198,15 @@ class PaperProcessor:
 
 
 
-    def process_paper(self, url: str):
+    def process_paper(self, url: str) -> Optional[dict]:
         """
         Main method to process a paper from URL.
         
         Args:
             url (str): URL of the PDF to process
+            
+        Returns:
+            Optional[dict]: Processing metadata if successful, None if failed
         """
         try:
             logging.info(f"Starting to process paper from URL: {url}")
@@ -228,13 +230,70 @@ class PaperProcessor:
             chunks = self._create_chunks(text_content)
             if not chunks:
                 raise RuntimeError("Failed to create text chunks")
-                
+            
+            # Create and save metadata
+            metadata = self._create_metadata(url, pdf_path, len(chunks))
+            metadata_path = self._save_metadata(metadata)
+            
             logging.info(f"Successfully processed paper into {len(chunks)} chunks")
             
-            # TODO: Next steps - OpenAI integration and summary generation
+            return metadata
             
         except Exception as e:
             logging.error(f"Error processing paper from URL {url}: {str(e)}")
+            raise
+
+    def _create_metadata(self, url: str, pdf_path: Path, num_chunks: int) -> dict:
+        """
+        Create metadata dictionary for paper processing.
+        
+        Args:
+            url (str): Original URL of the PDF
+            pdf_path (Path): Path to the downloaded PDF
+            num_chunks (int): Number of text chunks created
+            
+        Returns:
+            dict: Metadata dictionary with processing information
+        """
+        timestamp = datetime.now()
+        
+        metadata = {
+            "original_filename": pdf_path.name,
+            "summary_filename": f"summary_{pdf_path.stem}.txt",  # We'll create this later
+            "processing_date": timestamp.isoformat(),
+            "original_url": url,
+            "num_chunks": num_chunks,
+            # We'll extract these in a separate method if possible
+            "title": None,
+            "doi": None
+        }
+        
+        return metadata
+
+    def _save_metadata(self, metadata: dict) -> Path:
+        """
+        Save metadata to JSON file.
+        
+        Args:
+            metadata (dict): Metadata dictionary to save
+            
+        Returns:
+            Path: Path to saved metadata file
+        """
+        try:
+            # Create filename based on processing date
+            filename = f"metadata_{metadata['processing_date'].replace(':', '-')}.json"
+            file_path = self.directories['metadata'] / filename
+            
+            # Save metadata to JSON file
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump(metadata, f, indent=4)
+                
+            logging.info(f"Saved metadata to {file_path}")
+            return file_path
+            
+        except Exception as e:
+            logging.error(f"Error saving metadata: {str(e)}")
             raise
 
 if __name__ == "__main__":
@@ -245,14 +304,22 @@ if __name__ == "__main__":
     test_url = "https://arxiv.org/pdf/1706.03762.pdf"
     
     try:
-        processor.process_paper(test_url)
+        metadata = processor.process_paper(test_url)
         print("\nTest Summary:")
         print("✓ URL validation successful")
         print("✓ PDF download successful")
         print("✓ Text extraction successful")
         print("✓ Chunking successful")
-        print("\nCheck the 'full_papers' directory for the downloaded PDF!")
-        print("Check the 'error_log' directory for detailed logs!")
+        print("✓ Metadata saved")
+        
+        print("\nMetadata created:")
+        for key, value in metadata.items():
+            print(f"  {key}: {value}")
+        
+        print("\nCheck the following directories:")
+        print("- 'full_papers' for the downloaded PDF")
+        print("- 'metadata' for the JSON metadata file")
+        print("- 'error_log' for detailed logs")
         
     except ValueError as e:
         print(f"URL Validation Error: {str(e)}")
