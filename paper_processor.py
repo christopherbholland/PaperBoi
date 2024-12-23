@@ -21,10 +21,21 @@ from tqdm import tqdm
 # Local Imports
 ###################
 from config import ProcessorConfig, PaperMetadata, MetadataManager
-from url_processor import URLProcessor, get_paper_url_from_user  # New import
+from url_processor import URLProcessor, get_paper_url_from_user
 from openai_integration import OpenAIIntegration
 
+###################
+# Main Class
+###################
 class PaperProcessor:
+    """
+    Main class for processing academic papers from URLs.
+    Downloads, processes, and generates summaries using OpenAI.
+    """
+
+    ###################
+    # Initialization
+    ###################
     def __init__(self):
         load_dotenv()
         
@@ -46,7 +57,11 @@ class PaperProcessor:
             logging.error(f"Failed to initialize OpenAI integration: {str(e)}")
             raise
 
+    ###################
+    # Logging Setup
+    ###################
     def _setup_logging(self):
+        """Configure logging to both file and console."""
         log_file = self.config.errors_dir / f'error_log_{datetime.now().strftime("%Y%m%d")}.log'
         logging.basicConfig(
             level=logging.INFO,
@@ -57,6 +72,9 @@ class PaperProcessor:
             ]
         )
 
+    ###################
+    # Text Processing
+    ###################
     def create_chunks(self, text: str, max_chars: int = 7500) -> list[str]:
         """Split text into chunks at sentence boundaries."""
         sentences = re.split(r'(?<=[.!?])\s+', text.replace('\n', ' '))
@@ -82,24 +100,19 @@ class PaperProcessor:
         
         return chunks
 
+    ###################
+    # URL Processing
+    ###################
     def _validate_url(self, url: str) -> Tuple[bool, Optional[str]]:
-        try:
-            parsed = urlparse(url)
-            if not all([parsed.scheme, parsed.netloc]):
-                return False, "Invalid URL format"
-            
-            response = requests.head(url, allow_redirects=True)
-            
-            content_type = response.headers.get('content-type', '').lower()
-            if 'application/pdf' not in content_type:
-                return False, f"URL does not point to a PDF (content-type: {content_type})"
-            
-            return True, None
-            
-        except requests.RequestException as e:
-            return False, f"Error validating URL: {str(e)}"
+        """Validate if the URL points to a PDF."""
+        success, final_url, error = URLProcessor.get_final_pdf_url(url)
+        return success, error
 
+    ###################
+    # File Operations
+    ###################
     def _download_pdf(self, url: str) -> Optional[Path]:
+        """Download PDF from URL and save to papers directory."""
         try:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"paper_{timestamp}.pdf"
@@ -121,6 +134,7 @@ class PaperProcessor:
             return None
 
     def _extract_text_from_pdf(self, pdf_path: Path) -> Optional[str]:
+        """Extract text content from a PDF file."""
         try:
             with pdfplumber.open(pdf_path) as pdf:
                 text_content = []
@@ -139,25 +153,20 @@ class PaperProcessor:
             logging.error(f"Error extracting text from PDF: {str(e)}")
             return None
 
+    ###################
+    # Title Processing
+    ###################
     def _extract_and_sanitize_title(self, summary: str) -> str:
-        """
-        Extract the paper title from [[ ]] in summary and sanitize it for use as filename.
-        """
+        """Extract and sanitize paper title from summary."""
         try:
-            # Extract text between [[ and ]]
             match = re.search(r'\[\[(.*?)\]\]', summary)
             if not match:
                 logging.warning("Could not find paper title in [[ ]] format")
                 return "untitled_paper"
                 
             title = match.group(1).strip()
-            
-            # Sanitize for filename
-            # Replace invalid filename characters with underscores
             title = re.sub(r'[<>:"/\\|?*]', '_', title)
-            # Replace multiple spaces/underscores with single underscore
             title = re.sub(r'[\s_]+', '_', title)
-            # Remove any leading/trailing underscores
             title = title.strip('_')
             
             return title
@@ -166,7 +175,11 @@ class PaperProcessor:
             logging.error(f"Error extracting title from summary: {str(e)}")
             return "untitled_paper"
 
+    ###################
+    # Main Processing
+    ###################
     def process_paper(self, url: str) -> Optional[PaperMetadata]:
+        """Main method to process a paper from URL."""
         try:
             logging.info(f"Starting to process paper from URL: {url}")
             
@@ -217,7 +230,7 @@ class PaperProcessor:
                 original_url=url,
                 num_chunks=len(chunks),
                 title=paper_title,
-                doi=None,  # Could add DOI extraction if needed
+                doi=None,
                 summary_path=str(summary_path)
             )
             
@@ -228,25 +241,19 @@ class PaperProcessor:
             logging.error(f"Error processing paper from URL {url}: {str(e)}")
             raise
 
+    ###################
+    # Utility Methods
+    ###################
     def list_processed_papers(self) -> list[dict]:
+        """Return list of all processed papers, sorted by date."""
         master_data = self.metadata_manager.load_master()
         papers = list(master_data.values())
         papers.sort(key=lambda x: x['processing_date'], reverse=True)
         return papers
 
-    def _validate_url(self, url: str) -> Tuple[bool, Optional[str]]:
-        """
-        Validate if the URL points to a PDF.
-        
-        Args:
-            url (str): URL to validate
-            
-        Returns:
-            Tuple[bool, Optional[str]]: (is_valid, error_message)
-        """
-        success, final_url, error = URLProcessor.get_final_pdf_url(url)
-        return success, error
-
+###################
+# Main Execution
+###################
 if __name__ == "__main__":
     processor = PaperProcessor()
     
@@ -263,3 +270,36 @@ if __name__ == "__main__":
             
     except Exception as e:
         print(f"Error: {str(e)}")
+
+###################
+# Function Overview
+###################
+"""
+Class: PaperProcessor
+
+Initialization Methods:
+- __init__(): Initialize the processor with necessary configurations
+- _setup_logging(): Configure logging settings
+
+Text Processing Methods:
+- create_chunks(text, max_chars): Split text into manageable chunks
+
+URL Processing Methods:
+- _validate_url(url): Validate if URL points to a PDF
+
+File Operations:
+- _download_pdf(url): Download PDF from given URL
+- _extract_text_from_pdf(pdf_path): Extract text content from PDF
+
+Title Processing:
+- _extract_and_sanitize_title(summary): Extract and clean paper title
+
+Main Processing:
+- process_paper(url): Main method to process paper from URL
+
+Utility Methods:
+- list_processed_papers(): List all processed papers
+
+Each method includes error handling and logging for reliability.
+See method docstrings for detailed information.
+"""
