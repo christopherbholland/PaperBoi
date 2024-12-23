@@ -5,7 +5,7 @@ import logging
 from datetime import datetime
 import requests
 from urllib.parse import urlparse
-import re
+import pdfplumber
 from typing import Tuple, Optional
 
 class PaperProcessor:
@@ -124,36 +124,125 @@ class PaperProcessor:
             logging.error(f"Error downloading PDF: {str(e)}")
             return None
 
-    def process_paper(self, url: str):
-        """
-        Main method to process a paper from URL.
+def process_paper(self, url: str):
+    """
+    Main method to process a paper from URL.
+    
+    Args:
+        url (str): URL of the PDF to process
+    """
+    try:
+        logging.info(f"Starting to process paper from URL: {url}")
         
-        Args:
-            url (str): URL of the PDF to process
+        # Validate URL
+        is_valid, error_message = self._validate_url(url)
+        if not is_valid:
+            raise ValueError(f"Invalid URL: {error_message}")
+        
+        # Download PDF
+        pdf_path = self._download_pdf(url)
+        if not pdf_path:
+            raise RuntimeError("Failed to download PDF")
+        
+        # Extract text from PDF
+        text_content = self._extract_text_from_pdf(pdf_path)
+        if not text_content:
+            raise RuntimeError("Failed to extract text - might be a scanned PDF")
+        
+        # Create chunks
+        chunks = self._create_chunks(text_content)
+        if not chunks:
+            raise RuntimeError("Failed to create text chunks")
             
-        Raises:
-            ValueError: If the URL is invalid
-            RuntimeError: If PDF download fails
-            Exception: For other unexpected errors
-        """
-        try:
-            logging.info(f"Starting to process paper from URL: {url}")
+        logging.info(f"Successfully processed paper into {len(chunks)} chunks")
+        
+        # TODO: Next steps - OpenAI integration and summary generation
+        
+    except Exception as e:
+        logging.error(f"Error processing paper from URL {url}: {str(e)}")
+        raise
+
+
+def _extract_text_from_pdf(self, pdf_path: Path) -> Optional[str]:
+    """
+    Extract text content from a PDF file.
+    
+    Args:
+        pdf_path (Path): Path to the PDF file
+        
+    Returns:
+        Optional[str]: Extracted text if successful, None if file is scanned/unreadable
+    """
+    try:
+        logging.info(f"Starting text extraction from {pdf_path}")
+        
+        with pdfplumber.open(pdf_path) as pdf:
+            # List to store text from each page
+            text_content = []
             
-            # Validate URL
-            is_valid, error_message = self._validate_url(url)
-            if not is_valid:
-                raise ValueError(f"Invalid URL: {error_message}")
+            # Process each page
+            for page_num, page in enumerate(pdf.pages, 1):
+                try:
+                    text = page.extract_text()
+                    if text:
+                        text_content.append(text)
+                    logging.info(f"Processed page {page_num}")
+                except Exception as e:
+                    logging.error(f"Error processing page {page_num}: {str(e)}")
+                    continue
             
-            # Download PDF
-            pdf_path = self._download_pdf(url)
-            if not pdf_path:
-                raise RuntimeError("Failed to download PDF")
+            # Combine all text
+            full_text = '\n'.join(text_content)
             
-            # TODO: Next steps - PDF text extraction and processing
+            # Check if we got meaningful text
+            if len(full_text.strip()) < 100:  # Arbitrary minimum length
+                logging.warning("Extracted text is very short - might be a scanned PDF")
+                return None
+                
+            return full_text
             
-        except Exception as e:
-            logging.error(f"Error processing paper from URL {url}: {str(e)}")
-            raise
+    except Exception as e:
+        logging.error(f"Error extracting text from PDF: {str(e)}")
+        return None
+
+def _create_chunks(self, text: str, max_chars: int = 7500) -> list[str]:
+    """
+    Break text into chunks of specified maximum size, avoiding mid-sentence splits.
+    
+    Args:
+        text (str): Text to split into chunks
+        max_chars (int): Maximum characters per chunk
+        
+    Returns:
+        list[str]: List of text chunks
+    """
+    chunks = []
+    current_chunk = []
+    current_length = 0
+    
+    # Split into sentences (simple split on periods)
+    sentences = text.replace('\n', ' ').split('.')
+    
+    for sentence in sentences:
+        sentence = sentence.strip() + '.'  # Add the period back
+        sentence_length = len(sentence)
+        
+        if current_length + sentence_length > max_chars and current_chunk:
+            # Current chunk is full, save it and start new chunk
+            chunks.append(' '.join(current_chunk))
+            current_chunk = [sentence]
+            current_length = sentence_length
+        else:
+            # Add sentence to current chunk
+            current_chunk.append(sentence)
+            current_length += sentence_length
+    
+    # Add the last chunk if it exists
+    if current_chunk:
+        chunks.append(' '.join(current_chunk))
+    
+    logging.info(f"Created {len(chunks)} chunks from text")
+    return chunks
 
 if __name__ == "__main__":
     # Example usage
