@@ -9,6 +9,9 @@ import re
 from typing import Tuple, Optional
 import pdfplumber
 import json
+from openai_integration import OpenAIIntegration
+from openai import OpenAI
+from tqdm import tqdm
 
 class PaperProcessor:
     """
@@ -39,6 +42,14 @@ class PaperProcessor:
         
         # Set up logging
         self._setup_logging()
+
+        # Inside PaperProcessor.__init__
+        try:
+            self.openai = OpenAIIntegration(assistant_id="asst_wZ5zEV6sMvWehfujffAd6pO2")
+            logging.info("Successfully initialized OpenAI integration")
+        except Exception as e:
+            logging.error(f"Failed to initialize OpenAI integration: {str(e)}")
+            raise
         
     def _create_directories(self):
         """
@@ -442,55 +453,76 @@ class PaperProcessor:
         return papers
 
     def process_paper(self, url: str) -> Optional[dict]:
-            """
-            Main method to process a paper from URL.
+        """
+        Main method to process a paper from URL.
+        Downloads PDF, extracts text, processes with OpenAI Assistant, and saves results.
+        
+        Args:
+            url (str): URL of the PDF to process
             
-            Args:
-                url (str): URL of the PDF to process
+        Returns:
+            Optional[dict]: Processing metadata if successful, None if failed
+        """
+        try:
+            logging.info(f"Starting to process paper from URL: {url}")
+            
+            # Validate URL
+            is_valid, error_message = self._validate_url(url)
+            if not is_valid:
+                raise ValueError(f"Invalid URL: {error_message}")
+            
+            # Download PDF
+            pdf_path = self._download_pdf(url)
+            if not pdf_path:
+                raise RuntimeError("Failed to download PDF")
+            
+            # Extract text from PDF
+            text_content = self._extract_text_from_pdf(pdf_path)
+            if not text_content:
+                raise RuntimeError("Failed to extract text - might be a scanned PDF")
+            
+            # Extract title and DOI
+            title, doi = self._extract_metadata_from_pdf(pdf_path, text_content)
+            logging.info(f"Extracted title: {title}")
+            logging.info(f"Extracted DOI: {doi}")
+            
+            # Create chunks
+            chunks = self._create_chunks(text_content)
+            if not chunks:
+                raise RuntimeError("Failed to create text chunks")
                 
-            Returns:
-                Optional[dict]: Processing metadata if successful, None if failed
-            """
-            try:
-                logging.info(f"Starting to process paper from URL: {url}")
+            # Start OpenAI Assistant thread
+            if not self.openai.start_new_chat(len(chunks)):
+                raise RuntimeError("Failed to start OpenAI thread")
                 
-                # Validate URL
-                is_valid, error_message = self._validate_url(url)
-                if not is_valid:
-                    raise ValueError(f"Invalid URL: {error_message}")
+            # Process chunks with progress bar
+            logging.info(f"Processing {len(chunks)} chunks with OpenAI")
+            for i, chunk in enumerate(tqdm(chunks, desc="Processing chunks"), 1):
+                if not self.openai.send_chunk(chunk, i, len(chunks)):
+                    raise RuntimeError(f"Failed to process chunk {i}")
+                    
+            # Generate summary using Assistant
+            summary = self.openai.request_summary()
+            if not summary:
+                raise RuntimeError("Failed to generate summary")
                 
-                # Download PDF
-                pdf_path = self._download_pdf(url)
-                if not pdf_path:
-                    raise RuntimeError("Failed to download PDF")
-                
-                # Extract text from PDF
-                text_content = self._extract_text_from_pdf(pdf_path)
-                if not text_content:
-                    raise RuntimeError("Failed to extract text - might be a scanned PDF")
-                
-                # Extract title and DOI
-                title, doi = self._extract_metadata_from_pdf(pdf_path, text_content)
-                logging.info(f"Extracted title: {title}")
-                logging.info(f"Extracted DOI: {doi}")
-                
-                # Create chunks
-                chunks = self._create_chunks(text_content)
-                if not chunks:
-                    raise RuntimeError("Failed to create text chunks")
-                
-                # Create and save metadata
-                metadata = self._create_metadata(url, pdf_path, len(chunks), title, doi)
-                metadata_path = self._save_metadata(metadata)
-                
-                logging.info(f"Successfully processed paper into {len(chunks)} chunks")
-                
-                return metadata
-                
-            except Exception as e:
-                logging.error(f"Error processing paper from URL {url}: {str(e)}")
-                raise
-
+            # Save summary to file
+            summary_filename = f"summary_{pdf_path.stem}.txt"
+            summary_path = self.directories['summaries'] / summary_filename
+            if not self.openai.save_summary(summary, summary_path):
+                raise RuntimeError("Failed to save summary")
+            
+            # Create and save metadata
+            metadata = self._create_metadata(url, pdf_path, len(chunks), title, doi)
+            metadata['summary_path'] = str(summary_path)
+            metadata_path = self._save_metadata(metadata)
+            
+            logging.info("Successfully completed paper processing")
+            return metadata
+            
+        except Exception as e:
+            logging.error(f"Error processing paper from URL {url}: {str(e)}")
+            raise
 
 if __name__ == "__main__":
         # Create processor instance
