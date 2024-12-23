@@ -204,22 +204,6 @@ class PaperProcessor:
             return None
 
     def _extract_text_from_pdf(self, pdf_path: Path) -> Optional[str]:
-            """
-            Extract text content from a PDF file.
-            
-            Python Concepts:
-            - Context managers (with statement) for PDF handling
-            - List comprehension for collecting text
-            - String join operations
-            - Length checking with str.strip()
-            
-            Args:
-                pdf_path (Path): Path to the PDF file
-                
-            Returns:
-                Optional[str]: Extracted text or None if extraction fails
-            """
-    def _extract_text_from_pdf(self, pdf_path: Path) -> Optional[str]:
         """
         Extract text content from a PDF file.
         
