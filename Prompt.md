@@ -1,0 +1,2 @@
+Prompt
+hi i want to work step by step through making this code with you. i am a beginner so i want help learning how to do this, but i do want you to take on the bulk of the work of writing the code. i just want to take it step by step. does that make sense?

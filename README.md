@@ -40,11 +40,7 @@ A Python system for automatically downloading, processing, and summarizing acade
 
 ## Setup
 
-1. Clone this repository:
-```bash
-git clone <your-repo-url>
-cd paper-processor
-```
+1. Clone this repository.
 
 2. Create a virtual environment and activate it:
 ```bash
@@ -83,12 +79,6 @@ python paper_processor.py
    - arXiv URLs (e.g., "arxiv.org/abs/2305.10601")
    - URLs that redirect to PDFs
 
-Example URLs:
-```
-https://arxiv.org/abs/2305.10601
-https://arxiv.org/pdf/2305.10601.pdf
-https://example.com/paper.pdf
-```
 
 3. The system will:
    - Download the PDF
